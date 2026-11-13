@@ -233,6 +233,75 @@
 
       const text = input.value.trim();
 
+      // LOBIUM OWNER COMMAND FIX
+      // Handle owner commands locally, not as chat messages.
+      if (/^\/give(?:crate|coin)\b/i.test(text)) {
+        const currentUser = String(
+          localStorage.getItem("lobiumSession") || ""
+        );
+
+        if (currentUser.toLowerCase() !== "lord-of-blocks13") {
+          status.textContent = "Owner permission required.";
+          return;
+        }
+
+        const match = text.match(
+          /^\/give(crate|coin)\s+me\s+(\d+)$/i
+        );
+
+        if (!match) {
+          status.textContent =
+            "Use /givecrate me 5 or /givecoin me 50";
+          return;
+        }
+
+        const action = match[1].toLowerCase();
+        const amount = Number(match[2]);
+
+        if (!Number.isSafeInteger(amount) ||
+            amount < 1 || amount > 100) {
+          status.textContent = "Enter an amount from 1 to 100.";
+          return;
+        }
+
+        if (action === "crate") {
+          if (typeof stats !== "function" ||
+              typeof putStats !== "function") {
+            status.textContent = "Crate inventory unavailable.";
+            return;
+          }
+
+          const s = stats();
+          const before = Number(s.credits) || 0;
+
+          s.credits = before + amount;
+          putStats(s);
+
+          const after = Number(stats().credits);
+
+          if (after !== before + amount) {
+            status.textContent = "Unable to save crates.";
+            return;
+          }
+
+          status.textContent =
+            "✅ Added " + amount +
+            " crates. Total: " + after;
+
+          if (typeof drawCrates === "function") {
+            drawCrates();
+          }
+        } else {
+          status.textContent =
+            "Coin command needs its shop-wallet connection.";
+          return;
+        }
+
+        input.value = "";
+        return;
+      }
+      // END LOBIUM OWNER COMMAND FIX
+
       if (!text) return;
 
       const remaining =
