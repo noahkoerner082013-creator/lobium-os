@@ -1,0 +1,1550 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lobium DM's 3.0</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111522;color:#fff;font-family:Arial,sans-serif}
+button,input,textarea,select{font:inherit}
+button{border:0;background:#6954d9;color:white;padding:10px;border-radius:9px;cursor:pointer}
+button:hover{background:#8773ed}
+input,textarea,select{background:#30374c;color:white;border:1px solid #566079;border-radius:8px;padding:10px;max-width:100%}
+textarea{width:100%;min-height:75px}
+h2,h3{color:#c4b5fd}
+small,.muted{color:#aeb8d2}
+#auth{max-width:410px;margin:65px auto;padding:25px;background:#222941;border-radius:18px}
+#auth input{display:block;width:100%;margin:10px 0}
+#app{display:none;min-height:100vh}
+.sidebar{width:205px;background:#1d2438;padding:16px;display:flex;flex-direction:column;gap:9px}
+.sidebar button{text-align:left;background:transparent}
+.sidebar button:hover,.sidebar button.active{background:#41416d}
+.logo{color:#c4b5fd;font-size:21px;font-weight:bold;margin-bottom:22px}
+.content{flex:1;padding:22px;min-width:0;overflow:auto}
+.panel{background:#222940;border:1px solid #3a4565;padding:20px;border-radius:15px;margin:12px 0}
+#messages{height:50vh;overflow:auto;background:#171d30;padding:15px;border-radius:12px}
+.msg{padding:12px;border-bottom:1px solid #343c55;overflow-wrap:anywhere}
+.msg p{margin:5px 0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hidden{display:none!important}
+.tab{background:#353c58}
+.card{padding:15px;background:#303852;border-radius:12px;margin:10px 0}
+.avatar{width:50px;height:50px;border-radius:50%;object-fit:cover;background:#555}
+.banner{width:100%;height:135px;object-fit:cover;background:linear-gradient(90deg,#5144a9,#2475ac);border-radius:12px}
+.rainbow{background:linear-gradient(90deg,red,orange,yellow,lime,cyan,violet);background-size:200%;color:transparent;-webkit-background-clip:text;background-clip:text;animation:flow 3s linear infinite}
+.shiny{color:#fff;text-shadow:0 0 5px white,0 0 13px #b5a3ff}
+.peach{background:linear-gradient(90deg,#ffac91,#ffe2c8,#ff8db3);background-size:200%;color:transparent;-webkit-background-clip:text;background-clip:text;animation:flow 4s linear infinite}
+@keyframes flow{to{background-position:200%}}
+.font-mono{font-family:monospace}
+.font-serif{font-family:Georgia,serif}
+.font-bold{font-weight:900;letter-spacing:1px}
+.rank{font-size:12px;padding:3px 7px;border-radius:5px;background:#49416b}
+#bottom{margin-top:auto}
+@media(max-width:650px){
+#app{flex-direction:column!important}
+.sidebar{width:100%;flex-direction:row;flex-wrap:wrap}
+.sidebar button{font-size:12px}
+.logo{width:100%;margin:0}
+#bottom{margin:0}
+.content{padding:12px}
+}
+</style>
+</head>
+<body>
+
+<section id="auth">
+<h1>◈ LOBIUM DM'S</h1>
+<p>Local demo account</p>
+<div class="row">
+<button onclick="mode='signup';authMode()">Sign Up</button>
+<button onclick="mode='login';authMode()">Log In</button>
+</div>
+<h3 id="authTitle">Sign Up</h3>
+<input id="username" placeholder="Username" maxlength="20">
+<input id="password" type="password" placeholder="Password">
+<button onclick="enter()">Continue</button>
+<p id="authError" class="muted"></p>
+<small>This demo does not verify or save passwords. Do not use a real password.</small>
+</section>
+
+<div id="app">
+<aside class="sidebar">
+<div class="logo">◈ LOBIUM OS</div>
+<button onclick="page('main')">🌐 Main Chat</button>
+<button onclick="page('crates')">🎁 Crates</button>
+<button onclick="page('private')">🔒 Private Chat</button>
+<div id="bottom">
+<button onclick="page('settings')">⚙️ Account Settings</button>
+<button onclick="logout()">🚪 Log Out</button>
+<button onclick="location.href='index.html'">🏠 Home</button>
+</div>
+</aside>
+<main class="content" id="screen"></main>
+</div>
+
+<script>
+var mode="signup";
+var user=localStorage.getItem("lobiumSession")||"";
+var storeKey="lobium3_";
+var room="global";
+var currentPage="main";
+
+function el(id){return document.getElementById(id)}
+function load(k,fallback){
+try{
+var v=localStorage.getItem(storeKey+k);
+return v===null?fallback:JSON.parse(v);
+}catch(e){return fallback}
+}
+function save(k,v){
+try{localStorage.setItem(storeKey+k,JSON.stringify(v))}
+catch(e){alert("Browser storage is full. Try a smaller image.")}
+}
+function key(k){return user+"_"+k}
+function profile(){
+return load(key("profile"),{
+name:user,description:"",pfp:"",banner:"",
+rank:"Member",effect:"None",font:"Default",tag:"None"
+});
+}
+function putProfile(p){save(key("profile"),p)}
+function stats(){return load(key("stats"),{messages:0,lastClaim:0,credits:0})}
+function putStats(s){save(key("stats"),s)}
+function inventory(){return load(key("items"),[])}
+function rooms(){return load("rooms",[])}
+function messages(id){return load("messages_"+id,[])}
+
+function authMode(){el("authTitle").textContent=mode==="signup"?"Sign Up":"Log In"}
+function enter(){
+var n=el("username").value.trim();
+if(!/^[a-zA-Z0-9_-]{3,20}$/.test(n)){
+el("authError").textContent="Use 3-20 letters, numbers or underscores.";
+return;
+}
+if(el("password").value.length<6){
+el("authError").textContent="Enter at least 6 characters for the demo.";
+return;
+}
+user=n;
+localStorage.setItem("lobiumSession",user);
+el("password").value="";
+start();
+}
+function logout(){
+localStorage.removeItem("lobiumSession");
+user="";
+el("app").style.display="none";
+el("auth").style.display="block";
+}
+function start(){
+el("auth").style.display="none";
+el("app").style.display="flex";
+page("main");
+}
+function page(p){
+currentPage=p;
+if(p==="main")drawChat("global","Global Chat");
+if(p==="private")drawPrivate();
+if(p==="crates")drawCrates("open");
+if(p==="settings")drawSettings("profile");
+}
+function node(tag,text){
+var n=document.createElement(tag);
+n.textContent=text;
+return n;
+}
+function button(text,fn){
+var b=node("button",text);
+b.onclick=fn;
+return b;
+}
+function heading(text){
+el("screen").innerHTML="";
+el("screen").appendChild(node("h2",text));
+}
+function displayName(name){
+var p=load(name+"_profile",null);
+return p||{name:name,rank:"Member",effect:"None",font:"Default",tag:"None",pfp:""};
+}
+function decorated(parent,p){
+var label=node("strong",p.name||"Member");
+if(p.effect==="Rainbow")label.className="rainbow";
+if(p.effect==="Shiny")label.className="shiny";
+if(p.effect==="Peach Flow")label.className="peach";
+if(p.font==="Mono")label.className+=" font-mono";
+if(p.font==="Serif")label.className+=" font-serif";
+if(p.font==="Bold")label.className+=" font-bold";
+parent.appendChild(label);
+parent.appendChild(node("span"," ["+(p.rank||"Member")+"] "));
+if(p.tag&&p.tag!=="None")parent.appendChild(node("span"," "+p.tag));
+}
+function drawChat(id,name){
+room=id;
+heading("💬 "+name);
+var area=node("div","");
+area.id="messages";
+el("screen").appendChild(area);
+var form=node("form","");
+form.className="row";
+var input=node("input","");
+input.placeholder="Write a message...";
+input.maxLength=500;
+input.required=true;
+input.style.flex="1";
+form.appendChild(input);
+form.appendChild(node("button","Send"));
+form.onsubmit=function(e){
+e.preventDefault();
+var t=input.value.trim();
+if(!t)return;
+var all=messages(id);
+all.push({name:user,text:t,time:Date.now()});
+save("messages_"+id,all.slice(-100));
+if(id==="global"){
+var s=stats();
+s.messages++;
+putStats(s);
+}
+input.value="";
+renderMessages(area,id);
+};
+el("screen").appendChild(form);
+el("screen").appendChild(node("small","Local demo: messages are visible only in this browser."));
+renderMessages(area,id);
+}
+function renderMessages(area,id){
+area.innerHTML="";
+messages(id).forEach(function(m){
+var div=node("div","");
+div.className="msg";
+decorated(div,displayName(m.name));
+div.appendChild(node("p",m.text));
+area.appendChild(div);
+});
+area.scrollTop=area.scrollHeight;
+}
+function drawPrivate(){
+heading("🔒 Private Chatrooms");
+el("screen").appendChild(button("+ Create Private Room",function(){
+var name=prompt("Room name?");
+if(!name||!name.trim())return;
+var all=rooms();
+var id="room_"+Date.now();
+all.push({id:id,name:name.trim().slice(0,30),owner:user,members:[user]});
+save("rooms",all);
+drawPrivate();
+}));
+rooms().filter(function(r){return r.members.indexOf(user)!==-1}).forEach(function(r){
+var c=node("div","");
+c.className="card";
+c.appendChild(node("h3","🔒 "+r.name));
+c.appendChild(node("p","Members: "+r.members.join(", ")));
+c.appendChild(button("Open",function(){drawChat(r.id,r.name)}));
+if(r.owner===user){
+c.appendChild(button("Add Person",function(){
+var n=prompt("Username to add?");
+if(!n||!n.trim())return;
+n=n.trim();
+var all=rooms();
+var target=all.filter(function(x){return x.id===r.id})[0];
+if(target.members.indexOf(n)===-1)target.members.push(n);
+save("rooms",all);
+drawPrivate();
+}));
+c.appendChild(button("Remove Person",function(){
+var n=prompt("Username to remove?");
+if(!n||n===r.owner)return;
+var all=rooms();
+var target=all.filter(function(x){return x.id===r.id})[0];
+target.members=target.members.filter(function(x){return x!==n});
+save("rooms",all);drawPrivate();
+}));
+c.appendChild(button("Delete Room",function(){
+if(!confirm("Delete this room and its messages?"))return;
+save("rooms",rooms().filter(function(x){return x.id!==r.id}));
+localStorage.removeItem(storeKey+"messages_"+r.id);
+drawPrivate();
+}));
+}else{
+c.appendChild(button("Leave Room",function(){
+var all=rooms();
+var target=all.filter(function(x){return x.id===r.id})[0];
+target.members=target.members.filter(function(x){return x!==user});
+save("rooms",all);drawPrivate();
+}));
+}
+el("screen").appendChild(c);
+});
+}
+function drawCrates(tab){
+heading("🎁 Lobium Crates");
+var tabs=node("div","");
+tabs.className="row";
+tabs.appendChild(button("🎲 Open Crates",function(){drawCrates("open")}));
+tabs.appendChild(button("🎒 Unlocked",function(){drawCrates("items")}));
+el("screen").appendChild(tabs);
+if(tab==="items"){
+var items=inventory();
+if(!items.length)el("screen").appendChild(node("p","Nothing unlocked yet."));
+items.forEach(function(x){
+var c=node("div",x.rarity+" • "+x.type+" • "+x.name);
+c.className="card";
+el("screen").appendChild(c);
+});
+return;
+}
+var s=stats();
+var now=Date.now();
+var wait=Math.max(0,3600000-(now-s.lastClaim));
+var ready=s.messages>=15&&wait===0;
+var c=node("div","");
+c.className="panel";
+c.appendChild(node("h3","Hourly Crate"));
+c.appendChild(node("p","Eligible messages: "+Math.min(s.messages,15)+" / 15"));
+c.appendChild(node("p",wait?("Cooldown: "+Math.ceil(wait/60000)+" minutes"):"Cooldown complete"));
+c.appendChild(node("p","Available crates: "+s.credits));
+c.appendChild(button("Claim Crate",function(){
+var x=stats();
+if(x.messages<15||Date.now()-x.lastClaim<3600000){
+alert("You need 15 messages and a completed cooldown.");
+return;
+}
+x.credits++;
+x.messages=0;
+x.lastClaim=Date.now();
+putStats(x);
+drawCrates("open");
+}));
+el("screen").appendChild(c);
+el("screen").appendChild(node("h3","Choose Your Crate"));
+["Tag","Name Effect","Font"].forEach(function(type){
+var b=button("🎁 "+type+" Crate",function(){openCrate(type)});
+el("screen").appendChild(b);
+});
+el("screen").appendChild(node("p","Rarities: Common 70% • Rare 25% • Legendary 5%"));
+}
+var rewards={
+"Tag":{
+Common:["⭐ Star","🎮 Gamer","🌙 Night"],
+Rare:["💎 Crystal","⚡ Electric"],
+Legendary:["👑 Royal","🌌 Cosmic"]
+},
+"Name Effect":{
+Common:["Soft Glow","Blue Tint"],
+Rare:["Shiny","Peach Flow"],
+Legendary:["Rainbow"]
+},
+"Font":{
+Common:["Mono"],
+Rare:["Serif"],
+Legendary:["Bold"]
+}
+};
+function openCrate(type){
+var s=stats();
+if(s.credits<1)return alert("Claim a crate first!");
+var roll=Math.random()*100;
+var rarity=roll<70?"Common":roll<95?"Rare":"Legendary";
+var pool=rewards[type][rarity];
+var name=pool[Math.floor(Math.random()*pool.length)];
+var items=inventory();
+items.push({type:type,rarity:rarity,name:name});
+save(key("items"),items);
+s.credits--;
+putStats(s);
+alert("🎉 "+rarity.toUpperCase()+"!\nUnlocked: "+name);
+drawCrates("open");
+}
+function drawSettings(tab){
+heading("⚙️ Account Settings");
+var tabs=node("div","");
+tabs.className="row";
+["profile","text","rank"].forEach(function(t){
+tabs.appendChild(button(t==="profile"?"👤 Profile":t==="text"?"✨ Text":"🛡️ Your Rank",function(){drawSettings(t)}));
+});
+el("screen").appendChild(tabs);
+var p=profile();
+var c=node("div","");
+c.className="panel";
+el("screen").appendChild(c);
+if(tab==="profile"){
+var banner=node("img","");
+banner.className="banner";
+if(p.banner)banner.src=p.banner;
+c.appendChild(banner);
+c.appendChild(node("p","Banner image"));
+var bannerFile=node("input","");
+bannerFile.type="file";bannerFile.accept="image/*";
+bannerFile.onchange=function(){uploadImage(bannerFile,"banner")};
+c.appendChild(bannerFile);
+c.appendChild(node("p","Profile picture"));
+if(p.pfp){
+var pic=node("img","");
+pic.className="avatar";pic.src=p.pfp;c.appendChild(pic);
+}
+var file=node("input","");
+file.type="file";file.accept="image/*";
+file.onchange=function(){uploadImage(file,"pfp")};
+c.appendChild(file);
+c.appendChild(node("h3",p.name));
+c.appendChild(node("p","Description"));
+var desc=node("textarea","");
+desc.value=p.description||"";
+desc.maxLength=250;
+c.appendChild(desc);
+c.appendChild(button("Save Profile",function(){
+p.description=desc.value.trim();
+putProfile(p);
+alert("Profile saved!");
+}));
+}
+if(tab==="text"){
+c.appendChild(node("h3","Your Unlocked Cosmetics"));
+["Tag","Name Effect","Font"].forEach(function(type){
+c.appendChild(node("h4",type));
+var options=inventory().filter(function(x){return x.type===type});
+var names=["None"];
+options.forEach(function(x){
+if(names.indexOf(x.name)===-1)names.push(x.name);
+});
+names.forEach(function(name){
+c.appendChild(button(name,function(){
+if(type==="Tag")p.tag=name;
+if(type==="Name Effect")p.effect=name;
+if(type==="Font")p.font=name;
+putProfile(p);
+drawSettings("text");
+}));
+});
+});
+c.appendChild(node("p","Equipped: "+p.tag+" | "+p.effect+" | "+p.font));
+}
+if(tab==="rank"){
+c.appendChild(node("h3","Your Rank: "+p.rank));
+c.appendChild(node("p","Member: Send messages, create private rooms and earn crates."));
+c.appendChild(node("p","VIP: Cosmetic rank and special display label."));
+c.appendChild(node("p","Moderator: Future server-side moderation tools."));
+c.appendChild(node("p","Admin: Future server-side community management."));
+c.appendChild(node("p","Owner: Future server-side full administration."));
+c.appendChild(node("small","Ranks are informational in this demo. Secure rank permissions require a backend."));
+}
+}
+function uploadImage(input,field){
+var file=input.files[0];
+if(!file)return;
+if(file.type.indexOf("image/")!==0)return alert("Choose an image.");
+if(file.size>5000000)return alert("Image must be under 5 MB.");
+var reader=new FileReader();
+reader.onload=function(){
+var img=new Image();
+img.onload=function(){
+var canvas=document.createElement("canvas");
+canvas.width=field==="pfp"?160:600;
+canvas.height=field==="pfp"?160:180;
+var ctx=canvas.getContext("2d");
+var scale=Math.max(canvas.width/img.width,canvas.height/img.height);
+var w=img.width*scale,h=img.height*scale;
+ctx.drawImage(img,(canvas.width-w)/2,(canvas.height-h)/2,w,h);
+var p=profile();
+p[field]=canvas.toDataURL("image/jpeg",0.65);
+putProfile(p);
+drawSettings("profile");
+};
+img.src=reader.result;
+};
+reader.readAsDataURL(file);
+}
+if(user)start();
+</script>
+
+<!-- LOBIUM DM'S 3.1 ADD-ON -->
+<style>
+.lobium-avatar{
+ width:42px;height:42px;
+ border-radius:50%;
+ object-fit:cover;
+ background:linear-gradient(135deg,#7458ef,#389bd1);
+ display:flex;align-items:center;justify-content:center;
+ color:white;font-size:19px;font-weight:bold;
+ flex-shrink:0;
+}
+.lobium-message{
+ display:flex;align-items:flex-start;gap:12px;
+ padding:13px 6px;
+ border-bottom:1px solid #353d55;
+ overflow-wrap:anywhere;
+}
+.lobium-message-content{min-width:0;flex:1}
+.lobium-message-text{margin:7px 0;white-space:pre-wrap}
+.lobium-message-image{
+ max-width:260px;max-height:260px;
+ border-radius:12px;display:block;margin-top:8px;
+}
+.lobium-tools{
+ display:flex;gap:8px;flex-wrap:wrap;
+ margin-top:10px;
+}
+.lobium-status{color:#b6c3dd;font-size:13px}
+.lobium-profile-preview{
+ display:flex;align-items:center;gap:12px;
+ margin:15px 0;
+}
+.lobium-rank{
+ padding:3px 7px;border-radius:6px;
+ background:#464066;color:#d8c8ff;font-size:12px;
+}
+.lobium-effect-soft-glow{
+ color:#e4ceff;text-shadow:0 0 8px #a78bfa;
+}
+.lobium-effect-blue-tint{color:#81c9ff}
+.lobium-effect-rainbow{
+ background:linear-gradient(90deg,
+ #ff6868,#ffcb5c,#83f58e,#65caff,#bc82ff);
+ background-size:250% 100%;
+ color:transparent;
+ -webkit-background-clip:text;
+ background-clip:text;
+ animation:lobium-flow 4s linear infinite;
+}
+.lobium-effect-shiny{
+ color:#fff;
+ text-shadow:0 0 4px #fff,0 0 12px #c9b8ff;
+}
+.lobium-effect-peach-flow{
+ background:linear-gradient(90deg,
+ #ff9e8c,#ffe3bf,#ff89bc,#ff9e8c);
+ background-size:250% 100%;
+ color:transparent;
+ -webkit-background-clip:text;
+ background-clip:text;
+ animation:lobium-flow 4s linear infinite;
+}
+@keyframes lobium-flow{
+ to{background-position:250% 0}
+}
+</style>
+
+<script>
+(function(){
+"use strict";
+
+var OWNER_NAME="lord-of-blocks13";
+var RANKS=[
+ "Unranked","Starter","Mod",
+ "Admin","Co-Owner","Owner"
+];
+var SEND_DELAY=3000;
+var lastSend=0;
+var cooldownTimer=null;
+
+function rankIndex(rank){
+ return RANKS.indexOf(rank);
+}
+
+function getRank(name){
+ // LOCAL PREVIEW ONLY, NOT SECURE AUTHORIZATION.
+ if(name===OWNER_NAME)return "Owner";
+ var p=displayName(name);
+ return RANKS.indexOf(p.rank)>=0?p.rank:"Unranked";
+}
+
+function setRank(name,rank){
+ var p=displayName(name);
+ p.rank=rank;
+ save(name+"_profile",p);
+}
+
+function canManage(actor,target){
+ return rankIndex(getRank(actor))>=2 &&
+ rankIndex(getRank(actor))>rankIndex(getRank(target));
+}
+
+function avatar(name){
+ var p=displayName(name);
+ var element=document.createElement("div");
+ element.className="lobium-avatar";
+
+ if(p.pfp){
+  var image=document.createElement("img");
+  image.src=p.pfp;
+  image.alt=name+" avatar";
+  image.className="lobium-avatar";
+  element.appendChild(image);
+ }else{
+  element.textContent=(name||"?").charAt(0).toUpperCase();
+ }
+ return element;
+}
+
+function applyEffect(element,effect){
+ var classes={
+  "Rainbow":"lobium-effect-rainbow",
+  "Shiny":"lobium-effect-shiny",
+  "Peach Flow":"lobium-effect-peach-flow",
+  "Soft Glow":"lobium-effect-soft-glow",
+  "Blue Tint":"lobium-effect-blue-tint"
+ };
+ if(classes[effect])element.classList.add(classes[effect]);
+}
+
+function applyFont(element,font){
+ if(font==="Mono")element.style.fontFamily="monospace";
+ if(font==="Serif")element.style.fontFamily="Georgia,serif";
+ if(font==="Bold")element.style.fontWeight="900";
+}
+
+function blocked(name){
+ return load("lobium_banned_"+name,false);
+}
+function muted(name){
+ return load("lobium_muted_"+name,false);
+}
+
+function command(text){
+ var parts=text.trim().split(/\s+/);
+ var action=parts[0].toLowerCase();
+ var target=parts[1];
+ var rank=getRank(user);
+
+ if(action==="/help"){
+  alert("Commands:\n/rank Username Rank\n/ban Username\n/unban Username\n/mute Username\n/unmute Username\n/givecrate me Amount");
+  return true;
+ }
+
+ if(action==="/givecrate"){
+  if(rank!=="Owner"){
+   alert("Owner only.");
+   return true;
+  }
+  var amount=Number(parts[2]);
+  if(parts[1]!=="me"||
+     !Number.isInteger(amount)||
+     amount<1||amount>100){
+   alert("Use: /givecrate me 10 (maximum 100)");
+   return true;
+  }
+  var s=stats();
+  s.credits+=amount;
+  putStats(s);
+  alert("Added "+amount+" crates to your local inventory.");
+  return true;
+ }
+
+ if(action==="/rank"){
+  var newRank=parts.slice(2).join(" ");
+  if(!target||RANKS.indexOf(newRank)<0){
+   alert("Example: /rank PlayerName Mod");
+   return true;
+  }
+  if(target===OWNER_NAME||
+     rankIndex(rank)<2||
+     rankIndex(newRank)>=rankIndex(rank)||
+     !canManage(user,target)){
+   alert("You cannot make that rank change.");
+   return true;
+  }
+  setRank(target,newRank);
+  alert(target+" is now "+newRank+" (local demo).");
+  return true;
+ }
+
+ var commands={
+  "/ban":true,"/unban":false,
+  "/mute":true,"/unmute":false
+ };
+
+ if(Object.prototype.hasOwnProperty.call(commands,action)){
+  if(!target||target===user||!canManage(user,target)){
+   alert("You cannot moderate that user.");
+   return true;
+  }
+  var isBan=action==="/ban"||action==="/unban";
+  save("lobium_"+(isBan?"banned_":"muted_")+target,commands[action]);
+  alert("Local moderation updated for "+target);
+  return true;
+ }
+
+ return false;
+}
+
+function renderUpgradedMessages(area,id){
+ area.innerHTML="";
+ messages(id).forEach(function(m){
+  var p=displayName(m.name);
+  var row=document.createElement("div");
+  row.className="lobium-message";
+
+  row.appendChild(avatar(m.name));
+
+  var content=document.createElement("div");
+  content.className="lobium-message-content";
+
+  var heading=document.createElement("div");
+  var name=document.createElement("strong");
+  name.textContent=m.name;
+  applyEffect(name,p.effect);
+  applyFont(name,p.font);
+  heading.appendChild(name);
+
+  var badge=document.createElement("span");
+  badge.className="lobium-rank";
+  badge.textContent=" "+getRank(m.name);
+  heading.appendChild(badge);
+
+  if(p.tag&&p.tag!=="None"){
+   var tag=document.createElement("span");
+   tag.textContent=" "+p.tag;
+   heading.appendChild(tag);
+  }
+
+  content.appendChild(heading);
+
+  if(m.text){
+   var body=document.createElement("p");
+   body.className="lobium-message-text";
+   body.textContent=m.text;
+   applyEffect(body,p.effect);
+   applyFont(body,p.font);
+   content.appendChild(body);
+  }
+
+  if(m.image&&typeof m.image==="string"&&
+     m.image.indexOf("data:image/")===0){
+   var picture=document.createElement("img");
+   picture.className="lobium-message-image";
+   picture.src=m.image;
+   picture.alt="Chat attachment";
+   content.appendChild(picture);
+  }
+
+  row.appendChild(content);
+  area.appendChild(row);
+ });
+ area.scrollTop=area.scrollHeight;
+}
+
+function storeMessage(id,message){
+ var all=messages(id);
+ all.push(message);
+ save("messages_"+id,all.slice(-60));
+ if(id==="global"&&!message.image){
+  var s=stats();
+  s.messages++;
+  putStats(s);
+ }
+ lastSend=Date.now();
+}
+
+function remaining(){
+ return Math.max(0,SEND_DELAY-(Date.now()-lastSend));
+}
+
+function updatedChat(id,name){
+ room=id;
+ heading("💬 "+name);
+
+ var area=document.createElement("div");
+ area.id="messages";
+ el("screen").appendChild(area);
+
+ var form=document.createElement("form");
+ form.className="row";
+
+ var input=document.createElement("input");
+ input.placeholder="Type a message...";
+ input.maxLength=500;
+ input.required=true;
+ input.style.flex="1";
+
+ var send=document.createElement("button");
+ send.type="submit";
+ send.textContent="Send";
+
+ form.appendChild(input);
+ form.appendChild(send);
+ el("screen").appendChild(form);
+
+ var status=document.createElement("p");
+ status.className="lobium-status";
+ el("screen").appendChild(status);
+
+ function updateCooldown(){
+  var left=remaining();
+  send.disabled=left>0;
+  send.textContent=left>0?
+   "Wait "+Math.ceil(left/1000)+"s":"Send";
+  status.textContent=left>0?
+   "⏱️ Chat cooldown: "+Math.ceil(left/1000)+" seconds":
+   "Ready to send";
+ }
+ if(cooldownTimer)clearInterval(cooldownTimer);
+ cooldownTimer=setInterval(updateCooldown,200);
+ updateCooldown();
+
+ form.onsubmit=function(e){
+  e.preventDefault();
+  var text=input.value.trim();
+  if(!text)return;
+
+  if(text.charAt(0)==="/"&&command(text)){
+   input.value="";
+   return;
+  }
+
+  if(blocked(user)){
+   alert("Your account is banned in this local demo.");
+   return;
+  }
+  if(muted(user)){
+   alert("Your account is muted in this local demo.");
+   return;
+  }
+  if(remaining()>0)return;
+
+  storeMessage(id,{name:user,text:text,time:Date.now()});
+  input.value="";
+  renderUpgradedMessages(area,id);
+  updateCooldown();
+ };
+
+ if(rankIndex(getRank(user))>=2){
+  var tools=document.createElement("div");
+  tools.className="lobium-tools";
+  var file=document.createElement("input");
+  file.type="file";
+  file.accept="image/*";
+  file.style.display="none";
+
+  var upload=document.createElement("button");
+  upload.textContent="📷 Send Image";
+  upload.onclick=function(){file.click()};
+
+  file.onchange=function(){
+   var f=file.files[0];
+   if(!f)return;
+   if(f.type.indexOf("image/")!==0||f.size>5000000){
+    alert("Choose an image smaller than 5 MB.");
+    return;
+   }
+   if(blocked(user)||muted(user)||remaining()>0){
+    alert("You cannot send an image right now.");
+    return;
+   }
+
+   var reader=new FileReader();
+   reader.onload=function(){
+    var img=new Image();
+    img.onload=function(){
+     var canvas=document.createElement("canvas");
+     var scale=Math.min(1,650/Math.max(img.width,img.height));
+     canvas.width=Math.round(img.width*scale);
+     canvas.height=Math.round(img.height*scale);
+     canvas.getContext("2d").drawImage(
+      img,0,0,canvas.width,canvas.height
+     );
+     storeMessage(id,{
+      name:user,text:"",
+      image:canvas.toDataURL("image/jpeg",0.55),
+      time:Date.now()
+     });
+     renderUpgradedMessages(area,id);
+     updateCooldown();
+     file.value="";
+    };
+    img.src=reader.result;
+   };
+   reader.readAsDataURL(f);
+  };
+
+  tools.appendChild(upload);
+  tools.appendChild(file);
+  el("screen").appendChild(tools);
+ }
+
+ renderUpgradedMessages(area,id);
+}
+
+// Replace the old chat display without erasing stored data.
+drawChat=updatedChat;
+renderMessages=renderUpgradedMessages;
+
+// Add avatar preview to profile settings.
+var originalSettings=drawSettings;
+drawSettings=function(tab){
+ originalSettings(tab);
+
+ if(tab==="profile"){
+  var panel=el("screen").querySelector(".panel");
+  if(panel){
+   var preview=document.createElement("div");
+   preview.className="lobium-profile-preview";
+   preview.appendChild(avatar(user));
+
+   var details=document.createElement("div");
+   details.textContent=user+" • "+getRank(user);
+   preview.appendChild(details);
+
+   panel.insertBefore(preview,panel.firstChild);
+  }
+ }
+
+ if(tab==="rank"){
+  var panel=el("screen").querySelector(".panel");
+  if(panel){
+   panel.innerHTML="";
+   panel.appendChild(
+    document.createTextNode("Your rank: "+getRank(user))
+   );
+   var info=document.createElement("p");
+   info.textContent=
+    "Unranked and Starter: chat and crates. "+
+    "Mod: images, moderation, and lower-rank promotions. "+
+    "Admin: Mod permissions plus more promotions. "+
+    "Co-Owner: Admin permissions plus more promotions. "+
+    "Owner: highest rank and crate commands.";
+   panel.appendChild(info);
+  }
+ }
+};
+
+// Show the upgraded profile rank in the sidebar.
+var originalProfile=profile;
+profile=function(){
+ var p=originalProfile();
+ p.rank=getRank(user);
+ return p;
+};
+
+var originalStart=start;
+start=function(){
+ originalStart();
+ var sidebar=el("profile");
+ if(sidebar)sidebar.textContent=user+" | "+getRank(user);
+};
+
+if(user&&el("app").style.display!=="none"){
+ start();
+}
+
+})();
+</script>
+<!-- END LOBIUM DM'S 3.1 ADD-ON -->
+
+<!-- LOBIUM CRATE SPINNER ADD-ON -->
+<style>
+#lobiumSpinOverlay{
+ position:fixed;inset:0;z-index:99999;
+ background:rgba(7,9,20,.95);
+ display:none;align-items:center;justify-content:center;
+ padding:15px;
+}
+.lobium-spin-panel{
+ width:min(720px,100%);
+ background:linear-gradient(145deg,#222a49,#12172a);
+ border:1px solid #6058a2;
+ border-radius:20px;padding:25px;
+ text-align:center;color:white;
+ box-shadow:0 15px 70px #0009;
+}
+.lobium-spin-panel h2{color:#c4b5fd}
+.lobium-spin-window{
+ position:relative;overflow:hidden;
+ border:2px solid #5a648d;
+ border-radius:14px;background:#101626;
+ padding:15px 0;margin:25px 0;
+}
+.lobium-spin-strip{
+ display:flex;gap:10px;
+ width:max-content;
+ will-change:transform;
+}
+.lobium-spin-item{
+ width:130px;height:130px;flex-shrink:0;
+ border:2px solid #80889c;
+ border-radius:12px;background:#293146;
+ display:flex;flex-direction:column;
+ align-items:center;justify-content:center;
+ gap:10px;
+}
+.lobium-spin-item b{font-size:16px}
+.lobium-spin-item small{font-size:12px}
+.lobium-spin-item.common{border-color:#aeb8c8}
+.lobium-spin-item.rare{
+ border-color:#55b7ff;
+ box-shadow:inset 0 0 14px #318cff44;
+}
+.lobium-spin-item.legendary{
+ border-color:#ffce58;
+ box-shadow:inset 0 0 20px #ffb30055;
+}
+.lobium-spin-pointer{
+ position:absolute;left:50%;top:0;bottom:0;
+ width:3px;transform:translateX(-50%);
+ background:#fff;z-index:3;
+ box-shadow:0 0 12px #fff;
+ pointer-events:none;
+}
+.lobium-spin-pointer:before{
+ content:"▼";position:absolute;
+ top:-7px;left:-8px;color:#fff;
+}
+.lobium-spin-result{
+ min-height:55px;font-size:20px;
+ font-weight:bold;margin:15px 0;
+}
+.lobium-spin-result.common{color:#c9d0dc}
+.lobium-spin-result.rare{color:#69c6ff}
+.lobium-spin-result.legendary{
+ color:#ffd76b;text-shadow:0 0 16px #ffbc45;
+}
+.lobium-spin-actions{
+ display:flex;justify-content:center;gap:12px;
+}
+.lobium-spin-actions button{
+ padding:12px 22px;
+}
+</style>
+
+<div id="lobiumSpinOverlay">
+ <div class="lobium-spin-panel">
+  <h2>🎁 LOBIUM CRATE OPENING</h2>
+  <p id="lobiumSpinTitle">Opening your crate...</p>
+
+  <div class="lobium-spin-window" id="lobiumSpinWindow">
+   <div class="lobium-spin-pointer"></div>
+   <div class="lobium-spin-strip" id="lobiumSpinStrip"></div>
+  </div>
+
+  <div class="lobium-spin-result" id="lobiumSpinResult">
+   🎰 Spinning...
+  </div>
+
+  <div class="lobium-spin-actions">
+   <button id="lobiumSkip">⏩ Skip Animation</button>
+   <button id="lobiumClose" style="display:none">
+    🎒 Collect Reward
+   </button>
+  </div>
+ </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var overlay=document.getElementById("lobiumSpinOverlay");
+var strip=document.getElementById("lobiumSpinStrip");
+var result=document.getElementById("lobiumSpinResult");
+var title=document.getElementById("lobiumSpinTitle");
+var skip=document.getElementById("lobiumSkip");
+var close=document.getElementById("lobiumClose");
+var windowBox=document.getElementById("lobiumSpinWindow");
+
+var spinning=false;
+var finished=false;
+var frame=null;
+var prize=null;
+var selectedType=null;
+var targetX=0;
+var startTime=0;
+var duration=5000;
+var ITEM_WIDTH=140;
+var TARGET_INDEX=45;
+
+var icons={
+ "Tag":"🏷️",
+ "Name Effect":"✨",
+ "Font":"🔤"
+};
+
+function chooseReward(type){
+ var roll=Math.random()*100;
+ var rarity=roll<70?"Common":roll<95?"Rare":"Legendary";
+ var pool=rewards[type][rarity];
+ var name=pool[Math.floor(Math.random()*pool.length)];
+ return {type:type,rarity:rarity,name:name};
+}
+
+function makeItem(item){
+ var div=document.createElement("div");
+ div.className="lobium-spin-item "+item.rarity.toLowerCase();
+
+ var emoji=document.createElement("div");
+ emoji.style.fontSize="28px";
+ emoji.textContent=icons[item.type]||"🎁";
+
+ var name=document.createElement("b");
+ name.textContent=item.name;
+
+ var rarity=document.createElement("small");
+ rarity.textContent=item.rarity.toUpperCase();
+
+ div.appendChild(emoji);
+ div.appendChild(name);
+ div.appendChild(rarity);
+ return div;
+}
+
+function buildStrip(){
+ strip.innerHTML="";
+ for(var i=0;i<55;i++){
+  var item=i===TARGET_INDEX?
+   prize:chooseReward(selectedType);
+  strip.appendChild(makeItem(item));
+ }
+ strip.style.transform="translateX(0px)";
+}
+
+function savePrize(){
+ var items=inventory();
+ items.push(prize);
+ save(key("items"),items);
+}
+
+function finish(){
+ if(finished)return;
+ finished=true;
+ spinning=false;
+
+ if(frame!==null)cancelAnimationFrame(frame);
+ strip.style.transform="translateX("+targetX+"px)";
+
+ result.textContent="🎉 "+prize.rarity.toUpperCase()+
+  " — "+prize.name+"!";
+ result.className="lobium-spin-result "+
+  prize.rarity.toLowerCase();
+
+ skip.style.display="none";
+ close.style.display="inline-block";
+
+ // The crate was already spent when the spin started.
+ // Save the reward once, even if Skip is pressed.
+ savePrize();
+}
+
+function animate(time){
+ if(!spinning)return;
+ var progress=Math.min((time-startTime)/duration,1);
+
+ // Ease out: rapid movement at first, slow at the end.
+ var eased=1-Math.pow(1-progress,4);
+ var x=targetX*eased;
+ strip.style.transform="translateX("+x+"px)";
+
+ if(progress>=1){
+  finish();
+ }else{
+  frame=requestAnimationFrame(animate);
+ }
+}
+
+function startSpin(type){
+ if(spinning||overlay.style.display==="flex")return;
+
+ var s=stats();
+ if(s.credits<1){
+  alert("You need a crate first!");
+  return;
+ }
+
+ if(!rewards[type]){
+  alert("Unknown crate type.");
+  return;
+ }
+
+ selectedType=type;
+ prize=chooseReward(type);
+ finished=false;
+ spinning=true;
+
+ // Spend exactly one crate.
+ s.credits--;
+ putStats(s);
+
+ overlay.style.display="flex";
+ title.textContent=icons[type]+" "+type+" Crate";
+ result.textContent="🎰 Spinning...";
+ result.className="lobium-spin-result";
+ skip.style.display="inline-block";
+ close.style.display="none";
+
+ buildStrip();
+
+ // Center the chosen item under the pointer.
+ targetX=windowBox.clientWidth/2-
+  (TARGET_INDEX*ITEM_WIDTH+65);
+
+ startTime=performance.now();
+ frame=requestAnimationFrame(animate);
+}
+
+skip.onclick=finish;
+
+close.onclick=function(){
+ if(!finished)return;
+ overlay.style.display="none";
+ drawCrates("items");
+};
+
+// Replace the old instant-open function.
+openCrate=startSpin;
+})();
+</script>
+<!-- END LOBIUM CRATE SPINNER -->
+
+<!-- LOBIUM CRATES 4.0 ADD-ON -->
+<style>
+.lobium-spin-item.secret{
+ border-color:#e58bff!important;
+ background:linear-gradient(135deg,#44246d,#161329)!important;
+ box-shadow:0 0 22px #bb55ff88!important;
+}
+.lobium-spin-result.secret{
+ color:#efb0ff!important;
+ text-shadow:0 0 12px #bb55ff,0 0 25px #8d3dff;
+ animation:secretPulse 1s ease-in-out infinite alternate;
+}
+@keyframes secretPulse{
+ from{filter:brightness(1)}
+ to{filter:brightness(1.6)}
+}
+</style>
+
+<script>
+(function(){
+"use strict";
+
+// Expanded reward catalog
+var expandedRewards={
+ "Tag":{
+  Common:[
+   "⭐ Star","🎮 Gamer","🌙 Night",
+   "🔥 Fire","❄️ Frost","🌊 Ocean",
+   "🍀 Lucky","🐉 Dragon","🌸 Blossom",
+   "☁️ Cloud","🦊 Fox","🌲 Forest"
+  ],
+  Rare:[
+   "💎 Crystal","⚡ Electric",
+   "🌈 Prism","🪐 Saturn",
+   "🦋 Butterfly","🌠 Shooting Star",
+   "🧪 Toxic","🦈 Shark"
+  ],
+  Legendary:[
+   "👑 Royal","🌌 Cosmic",
+   "🐲 Mythic","☀️ Solar",
+   "🌑 Eclipse","🔱 Trident"
+  ],
+  Secret:[
+   "🕳️ Void Walker","👁️ All Seeing",
+   "♾️ Infinite","🌟 Celestial King"
+  ]
+ },
+ "Name Effect":{
+  Common:[
+   "Soft Glow","Blue Tint",
+   "Mint Glow","Rose Tint",
+   "Golden Tint","Ice Blue",
+   "Lavender Glow","Ember"
+  ],
+  Rare:[
+   "Shiny","Peach Flow",
+   "Neon Pulse","Ocean Flow",
+   "Emerald Glow","Pink Sparkle"
+  ],
+  Legendary:[
+   "Rainbow","Galaxy Flow",
+   "Golden Shine","Aurora",
+   "Electric Storm"
+  ],
+  Secret:[
+   "Void Glitch","Celestial",
+   "Infinity Flow"
+  ]
+ },
+ "Font":{
+  Common:[
+   "Mono","Serif","Bold",
+   "Rounded","Classic"
+  ],
+  Rare:[
+   "Pixel","Comic","Elegant",
+   "Wide","Typewriter"
+  ],
+  Legendary:[
+   "Royal","Futuristic",
+   "Arcade"
+  ],
+  Secret:[
+   "Glitch","Cosmic"
+  ]
+ }
+};
+
+var chances=[
+ {rarity:"Common",weight:69},
+ {rarity:"Rare",weight:25},
+ {rarity:"Legendary",weight:5},
+ {rarity:"Secret",weight:1}
+];
+
+var types=["Tag","Name Effect","Font"];
+
+function allOptions(type){
+ var options=[];
+ var selected=type==="Miscellaneous"?types:[type];
+
+ selected.forEach(function(t){
+  Object.keys(expandedRewards[t]).forEach(function(r){
+   expandedRewards[t][r].forEach(function(name){
+    options.push({type:t,rarity:r,name:name});
+   });
+  });
+ });
+ return options;
+}
+
+function ownedSet(){
+ var owned={};
+ inventory().forEach(function(item){
+  owned[item.type+"|"+item.name]=true;
+ });
+ return owned;
+}
+
+function available(type){
+ var owned=ownedSet();
+ return allOptions(type).filter(function(item){
+  return !owned[item.type+"|"+item.name];
+ });
+}
+
+function randomChoice(array){
+ return array[Math.floor(Math.random()*array.length)];
+}
+
+function rollUnique(type){
+ var pool=available(type);
+ if(!pool.length)return null;
+
+ // Keep original rarity probabilities where possible.
+ // If a rarity is fully collected, reroll among
+ // remaining available rarities.
+ var eligible=chances.filter(function(c){
+  return pool.some(function(x){return x.rarity===c.rarity});
+ });
+ var total=eligible.reduce(function(s,c){return s+c.weight},0);
+ var roll=Math.random()*total;
+ var rarity=eligible[eligible.length-1].rarity;
+
+ for(var i=0;i<eligible.length;i++){
+  roll-=eligible[i].weight;
+  if(roll<0){
+   rarity=eligible[i].rarity;
+   break;
+  }
+ }
+ return randomChoice(pool.filter(function(x){
+  return x.rarity===rarity;
+ }));
+}
+
+// Replace the reward catalog used by the original spinner.
+rewards=expandedRewards;
+
+// Add the Miscellaneous option to the crate page.
+var previousDrawCrates=drawCrates;
+drawCrates=function(tab){
+ previousDrawCrates(tab);
+
+ if(tab!=="open")return;
+
+ var screen=document.getElementById("screen");
+ if(!screen)return;
+
+ var button=document.createElement("button");
+ button.textContent="🎲 Miscellaneous Crate";
+ button.onclick=function(){openCrate("Miscellaneous")};
+ screen.appendChild(button);
+
+ var description=document.createElement("p");
+ description.className="muted";
+ description.textContent=
+  "Miscellaneous can unlock Tags, Name Effects, and Fonts. "+
+  "Duplicates automatically reroll. "+
+  "Common 69% • Rare 25% • Legendary 5% • Secret 1%.";
+ screen.appendChild(description);
+};
+
+// Override the old spinner's openCrate function.
+// This reuses the existing overlay and animation.
+openCrate=function(type){
+ if(!expandedRewards[type]&&type!=="Miscellaneous"){
+  alert("Unknown crate type.");
+  return;
+ }
+
+ var overlay=document.getElementById("lobiumSpinOverlay");
+ var strip=document.getElementById("lobiumSpinStrip");
+ var result=document.getElementById("lobiumSpinResult");
+ var title=document.getElementById("lobiumSpinTitle");
+ var skip=document.getElementById("lobiumSkip");
+ var close=document.getElementById("lobiumClose");
+ var windowBox=document.getElementById("lobiumSpinWindow");
+
+ if(!overlay||!strip||!windowBox){
+  alert("Install the previous spinner add-on first.");
+  return;
+ }
+ if(overlay.style.display==="flex")return;
+
+ var s=stats();
+ if(s.credits<1){
+  alert("You need a crate first!");
+  return;
+ }
+
+ var prize=rollUnique(type);
+ if(!prize){
+  alert("You've already unlocked everything in this crate!");
+  return;
+ }
+
+ // Spend crate and save prize together before animation.
+ // This prevents losing the prize on refresh.
+ s.credits--;
+ putStats(s);
+
+ var items=inventory();
+ items.push(prize);
+ save(key("items"),items);
+
+ overlay.style.display="flex";
+ title.textContent="🎁 "+type+" Crate";
+ result.textContent="🎰 Spinning...";
+ result.className="lobium-spin-result";
+ skip.style.display="inline-block";
+ close.style.display="none";
+
+ strip.innerHTML="";
+
+ var itemWidth=140;
+ var targetIndex=45;
+
+ for(var i=0;i<55;i++){
+  var item=i===targetIndex?
+   prize:randomChoice(allOptions(type));
+
+  var div=document.createElement("div");
+  div.className="lobium-spin-item "+item.rarity.toLowerCase();
+
+  var emoji=document.createElement("div");
+  emoji.style.fontSize="26px";
+  emoji.textContent=item.type==="Tag"?"🏷️":
+   item.type==="Font"?"🔤":"✨";
+
+  var label=document.createElement("b");
+  label.textContent=item.name;
+  var rarity=document.createElement("small");
+  rarity.textContent=item.rarity.toUpperCase();
+
+  div.appendChild(emoji);
+  div.appendChild(label);
+  div.appendChild(rarity);
+  strip.appendChild(div);
+ }
+
+ strip.style.transform="translateX(0px)";
+
+ var targetX=windowBox.clientWidth/2-
+  (targetIndex*itemWidth+65);
+ var start=performance.now();
+ var duration=5000;
+ var done=false;
+ var frame;
+
+ function finish(){
+  if(done)return;
+  done=true;
+  cancelAnimationFrame(frame);
+  strip.style.transform="translateX("+targetX+"px)";
+  result.textContent="🎉 "+prize.rarity.toUpperCase()+
+   " — "+prize.name+"!";
+  result.className="lobium-spin-result "+
+   prize.rarity.toLowerCase();
+  skip.style.display="none";
+  close.style.display="inline-block";
+ }
+
+ function animate(now){
+  if(done)return;
+  var progress=Math.min((now-start)/duration,1);
+  var eased=1-Math.pow(1-progress,4);
+  strip.style.transform=
+   "translateX("+(targetX*eased)+"px)";
+  if(progress>=1)finish();
+  else frame=requestAnimationFrame(animate);
+ }
+
+ skip.onclick=finish;
+ close.onclick=function(){
+  finish();
+  overlay.style.display="none";
+  drawCrates("items");
+ };
+ frame=requestAnimationFrame(animate);
+};
+
+// Expand the effects and fonts used in chat.
+// These apply to newly rendered messages.
+var effectColors={
+ "Mint Glow":"#86ffd5",
+ "Rose Tint":"#ff9bc0",
+ "Golden Tint":"#ffd66e",
+ "Ice Blue":"#9fe8ff",
+ "Lavender Glow":"#c9a8ff",
+ "Ember":"#ff8d5b",
+ "Neon Pulse":"#71ffdd",
+ "Ocean Flow":"#64c8ff",
+ "Emerald Glow":"#5bffa1",
+ "Pink Sparkle":"#ff94e8",
+ "Galaxy Flow":"#bb8aff",
+ "Golden Shine":"#ffe37a",
+ "Aurora":"#81ffca",
+ "Electric Storm":"#89bfff",
+ "Void Glitch":"#dc8bff",
+ "Celestial":"#fff0a3",
+ "Infinity Flow":"#b8aaff"
+};
+
+var oldApplyEffect=applyEffect;
+applyEffect=function(element,effect){
+ oldApplyEffect(element,effect);
+ if(effectColors[effect]){
+  element.style.color=effectColors[effect];
+  element.style.textShadow="0 0 8px currentColor";
+ }
+};
+
+var oldApplyFont=applyFont;
+applyFont=function(element,font){
+ oldApplyFont(element,font);
+ if(font==="Rounded")element.style.fontFamily="Arial,sans-serif";
+ if(font==="Classic")element.style.fontFamily="Georgia,serif";
+ if(font==="Pixel"||font==="Arcade")
+  element.style.fontFamily="monospace";
+ if(font==="Comic")element.style.fontFamily="Comic Sans MS,cursive";
+ if(font==="Elegant"||font==="Royal")
+  element.style.fontFamily="Georgia,serif";
+ if(font==="Wide")element.style.letterSpacing="3px";
+ if(font==="Typewriter")element.style.fontFamily="Courier New,monospace";
+ if(font==="Futuristic"||font==="Cosmic")
+  element.style.letterSpacing="2px";
+ if(font==="Glitch")element.style.textShadow="2px 0 #f0f, -2px 0 #0ff";
+};
+})();
+</script>
+<!-- END LOBIUM CRATES 4.0 -->
+</body>
+</html>
