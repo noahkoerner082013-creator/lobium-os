@@ -4574,16 +4574,42 @@ function currentName() {
 
     var key, data;
 
-    if (action === "givecrate") {
-      key = storekey +name + "stats";
+    
+if (action === "givecrate") {
+  try {
+    if (typeof stats !== "function" ||
+        typeof putStats !== "function") {
+      alert("Crate inventory unavailable.");
+      return;
+    }
 
-      try {
-        data = JSON.parse(
-          localStorage.getItem(key)
-        ) || {};
-      } catch (e) {
-        data = {};
-      }
+    var s = stats();
+    var before = Number(s.credits) || 0;
+
+    s.credits = before + amount;
+    putStats(s);
+
+    var after = Number(stats().credits);
+
+    if (after !== before + amount) {
+      alert("Crates could not be saved.");
+      return;
+    }
+
+    alert(
+      "Added " + amount + " crates! Total: " + after
+    );
+
+    if (typeof drawCrates === "function") {
+      drawCrates();
+    }
+
+  } catch (error) {
+    console.error("Givecrate error:", error);
+    alert("Could not add crates.");
+  }
+}
+
 
       data.credits =
         (Number(data.credits) || 0) + amount;
