@@ -3805,7 +3805,7 @@ function buyPack(size){
   }
 
   if(typeof stats!=="function" ||
-     typeof setStats!=="function"){
+     typeof putStats!=="function"){
     alert("Crate inventory is unavailable.");
     return;
   }
@@ -3838,7 +3838,7 @@ function buyPack(size){
 
   try{
     s.credits+=pack.crates;
-    setStats(s);
+    putStats(s);
   }catch(e){
     wallet.coins=oldCoins;
     saveWallet(wallet);
