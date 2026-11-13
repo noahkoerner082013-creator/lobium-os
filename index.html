@@ -4575,7 +4575,7 @@ function currentName() {
     var key, data;
 
     if (action === "givecrate") {
-      key = "lobium4:stats:" + name;
+      key = storekey +name + "stats";
 
       try {
         data = JSON.parse(
