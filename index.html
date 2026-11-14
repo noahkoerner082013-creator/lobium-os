@@ -2569,9 +2569,7 @@ send.textContent="Send";
         }
 
         if (!selfName) {
-          selfName = JSON.parse(
-            localStorage.getItem("lobium4:session")
-          ) || "";
+         selfName = localstorage.getItem("lobiumSession") || "";
         }
       } catch (error) {}
 
